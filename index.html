@@ -19,6 +19,7 @@
   --bg:#EDF0F2; --surface:#FFFFFF; --sunk:#E3E8EC; --ink:#131A20; --muted:#5A6672; --line:#D3DAE0;
   --accent:#1F5FBF; --accent-ink:#FFFFFF; --soft:#DCE6F5;
   --good:#1D7F47; --good-soft:#D9F0E2; --bad:#B8342A; --bad-soft:#F7DEDB;
+  --dance:#8A4FC7; --dance-soft:#EDE3F8; --hiit:#D46A1F; --hiit-soft:#FBE6D6;
   --p25:#C8322B; --p20:#1F5FBF; --p15:#E0AE17; --p10:#2E8B57; --p5:#F5F5F2; --p2:#2A2E33; --p1:#9AA3AB;
   --display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
   --body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
@@ -27,7 +28,8 @@
 @media (prefers-color-scheme: dark){:root{
   --bg:#0E1317; --surface:#171F26; --sunk:#111820; --ink:#E7ECF0; --muted:#94A1AC; --line:#28333D;
   --accent:#5E96E8; --accent-ink:#08111F; --soft:#1B2B42;
-  --good:#52C584; --good-soft:#163024; --bad:#F07463; --bad-soft:#3A1E1B; --p2:#4A5058; color-scheme:dark}}
+  --good:#52C584; --good-soft:#163024; --bad:#F07463; --bad-soft:#3A1E1B; --p2:#4A5058;
+  --dance:#B888EC; --dance-soft:#2C2140; --hiit:#F09A5A; --hiit-soft:#3A2617; color-scheme:dark}}
 
 *{box-sizing:border-box}
 html,body{background:var(--bg);color:var(--ink);margin:0}
@@ -116,12 +118,24 @@ p{margin:0}
 .day.out{color:var(--muted);opacity:.45}
 .day.today .dn{background:var(--ink);color:var(--bg);border-radius:6px;padding:0 5px}
 .day[aria-pressed="true"]{border-color:var(--accent);background:var(--soft)}
-.mark{font-family:var(--display);font-weight:700;font-size:15px;width:24px;height:24px;border-radius:7px;display:grid;place-items:center;line-height:1;font-style:normal}
+.marks{display:flex;gap:2px;justify-content:center;flex-wrap:wrap}
+.mark{font-family:var(--display);font-weight:700;font-size:13px;width:20px;height:20px;border-radius:7px;display:grid;place-items:center;line-height:1;font-style:normal}
 .mark.done{background:var(--good);color:#fff}
 .mark.active{background:var(--accent);color:var(--accent-ink)}
 .mark.planned{border:2px solid var(--accent);color:var(--accent)}
 .mark.missed{border:2px dashed var(--muted);color:var(--muted)}
+.mark.dance.done{background:var(--dance);color:#fff}.mark.dance.planned,.mark.dance.suggested{border:2px solid var(--dance);color:var(--dance)}
+.mark.hiit.done{background:var(--hiit);color:#fff}.mark.hiit.planned,.mark.hiit.suggested{border:2px solid var(--hiit);color:var(--hiit)}
+.mark.suggested{border-style:dashed!important;opacity:.7}
 .mark.skipped{border:2px solid var(--line);color:var(--muted);text-decoration:line-through}
+.week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.wd{display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 0;border-radius:10px;font-size:13px;font-variant-numeric:tabular-nums}
+.wd .l{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.wd.now{background:var(--soft)}
+.wd .marks{min-height:20px}
+.act-card{border-left-width:4px}
+.act-card.dance{border-left-color:var(--dance)}.act-card.hiit{border-left-color:var(--hiit)}
+.sel{height:38px;border-radius:10px;border:1px solid var(--line);background:var(--sunk);padding:0 10px;font-weight:600;min-width:120px}
 .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
 .legend span{display:inline-flex;align-items:center;gap:6px}
 .legend .mark{width:18px;height:18px;font-size:12px;border-radius:5px}
@@ -266,6 +280,10 @@ const LIB={
   pallof:X("Pallof Press","Core",3,10,"Obliques, deep abs",["Stand side-on to a cable at chest height.","Press the handle straight out and resist the twist.","Return. Reps are per side."],"Letting the cable rotate your torso."),
   farmer:X("Farmer's Carry","Core",3,30,"Grip, traps, core",["Heavy dumbbells or kettlebells at your sides.","Walk tall with short, quick steps.","Reps count seconds walked."],"Leaning to one side or shrugging.",{unit:"s"})
 };
+const ACT={dance:{name:"Dancing",short:"D",min:120},hiit:{name:"HIIT",short:"H",min:60}};
+const EFFORT={easy:"Easy",moderate:"Moderate",hard:"Hard"};
+const DAYNAMES=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+const DEFAULT_WEEK={"1":"dance","2":"gym","4":"hiit","6":"gym"};
 const PROGRAM={A:["squat","bench","row"],B:["squat","ohp","deadlift"]};
 const MAIN=["squat","bench","row","ohp","deadlift"];
 const PLATES=[[25,"p25"],[20,"p20"],[15,"p15"],[10,"p10"],[5,"p5"],[2.5,"p2"],[1.25,"p1"]];
@@ -289,25 +307,25 @@ function plates(total,bar){
 }
 function defaults(){
   const lifts={}; MAIN.forEach(k=>lifts[k]={weight:LIB[k].start,fails:0});
-  return {lifts,next:"A",bar:20,acc:{},extras:{A:[],B:[]},rest:{main:90,dead:180,fail:300,acc:60},sound:true,started:false,lastBackup:null};
+  return {lifts,next:"A",bar:20,acc:{},extras:{A:[],B:[]},rest:{main:90,dead:180,fail:300,acc:60},sound:true,started:false,lastBackup:null,week:clone(DEFAULT_WEEK)};
 }
 function fill(st){ // bring older saved settings up to date
   const d=defaults(); if(!st) return null;
   st.extras=st.extras||d.extras; st.extras.A=st.extras.A||[]; st.extras.B=st.extras.B||[];
-  st.rest=Object.assign(d.rest,st.rest||{}); st.acc=st.acc||{}; if(st.sound===undefined) st.sound=true;
+  st.rest=Object.assign(d.rest,st.rest||{}); st.acc=st.acc||{}; if(st.sound===undefined) st.sound=true; if(!st.week) st.week=clone(DEFAULT_WEEK);
   MAIN.forEach(k=>{if(!st.lifts[k]) st.lifts[k]=d.lifts[k]}); return st;
 }
 
 /* ---------- state + storage (this phone only) ---------- */
-const S={settings:null,sessions:{},tab:"today",calMonth:null,calSel:today(),progLift:"squat",sheet:null,addTarget:"session",timer:null,confirm:null,importData:null,storageOk:true};
+const S={settings:null,sessions:{},acts:{},tab:"today",calMonth:null,calSel:today(),progLift:"squat",sheet:null,addTarget:"session",timer:null,confirm:null,importData:null,storageOk:true};
 {const d=new Date();S.calMonth=new Date(d.getFullYear(),d.getMonth(),1)}
 function load(){
-  try{const raw=localStorage.getItem(KEY); if(raw){const o=JSON.parse(raw); S.settings=fill(o.settings||null); S.sessions=o.sessions||{}}}
+  try{const raw=localStorage.getItem(KEY); if(raw){const o=JSON.parse(raw); S.settings=fill(o.settings||null); S.sessions=o.sessions||{}; S.acts=o.acts||{}}}
   catch(e){S.storageOk=false}
   try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 }
 function save(){
-  try{localStorage.setItem(KEY,JSON.stringify({settings:S.settings,sessions:S.sessions}));S.storageOk=true}
+  try{localStorage.setItem(KEY,JSON.stringify({settings:S.settings,sessions:S.sessions,acts:S.acts}));S.storageOk=true}
   catch(e){S.storageOk=false}
 }
 
@@ -346,6 +364,60 @@ function undoFinish(s){
   delete s.prev; s.status="active"; s.exercises.forEach(e=>{delete e.result;delete e.nextWeight}); save();
 }
 function plannedType(date){const s=S.sessions[date]; return s&&s.status==="planned"?s.type:null}
+
+/* ---------- week plan + activities ---------- */
+const planFor=k=>S.settings.week[String(parse(k).getDay())]||null;
+function actFor(k){ // explicit entry, or a suggestion from the weekly routine for today/future
+  if(S.acts[k]) return S.acts[k];
+  const p=planFor(k); if((p==="dance"||p==="hiit")&&k>=today()) return {date:k,kind:p,status:"suggested"};
+  return null;
+}
+function gymMark(k){
+  const s=S.sessions[k], t=today();
+  if(s){const cls=s.status==="planned"&&k<t?"missed":s.status; return `<span class="mark ${cls}">${s.type}</span>`}
+  if(planFor(k)==="gym"&&k>=t) return `<span class="mark planned suggested" title="Gym day">G</span>`;
+  return "";
+}
+function actMark(k){
+  const a=actFor(k); if(!a) return "";
+  const cls=a.status==="planned"&&k<today()?"missed":a.status;
+  return `<span class="mark ${a.kind} ${cls}">${ACT[a.kind].short}</span>`;
+}
+function weekStart(d){const x=new Date(d.getFullYear(),d.getMonth(),d.getDate()); x.setDate(x.getDate()-((x.getDay()+6)%7)); return x}
+function nextGymDay(){
+  const d=new Date();
+  for(let i=0;i<14;i++){const x=new Date(d);x.setDate(d.getDate()+i);const k=ymd(x);
+    const s=S.sessions[k]; if(s&&s.status!=="done") return k; if(!s&&planFor(k)==="gym") return k}
+  return null;
+}
+function weekStrip(){
+  const st0=weekStart(new Date()), t=today(); let done=0,total=0;
+  const cols=[...Array(7)].map((_,i)=>{const d=new Date(st0);d.setDate(st0.getDate()+i);const k=ymd(d);
+    const s=S.sessions[k], a=S.acts[k];
+    const hasGym=!!s||planFor(k)==="gym", act=a||((planFor(k)==="dance"||planFor(k)==="hiit")?{status:"x"}:null);
+    if(hasGym&&!(s&&s.status==="skipped")){total++; if(s&&s.status==="done") done++}
+    if(act&&act.status!=="skipped"){total++; if(act.status==="done") done++}
+    return `<button class="wd ${k===t?"now":""}" data-a="goto-day" data-d="${k}" aria-label="${fmtDay(k)}"><span class="l">${["Mo","Tu","We","Th","Fr","Sa","Su"][i]}</span><span>${d.getDate()}</span><span class="marks">${gymMark(k)}${actMark(k)}</span></button>`}).join("");
+  return `<div class="card"><div class="row"><div class="eyebrow grow">This week</div><span class="badge ${done>=total&&total?"good":""}">${done} of ${total} done</span></div><div class="week">${cols}</div></div>`;
+}
+function actCard(k,inPanel){
+  const a=actFor(k); if(!a) return "";
+  const A=ACT[a.kind], o=a.kind==="dance"?"hiit":"dance";
+  let body;
+  if(a.status==="done"){
+    body=`<div class="row"><p class="grow"><b>Done</b> · <span class="num">${a.minutes} min</span></p><button class="btn sm ghost" data-a="act-undo" data-d="${k}">Undo</button></div>
+    <div class="row wrap-r"><span class="small muted">How hard was it?</span>${Object.entries(EFFORT).map(([v,l])=>`<button class="chip" data-a="act-effort" data-d="${k}" data-v="${v}" aria-pressed="${a.effort===v}">${l}</button>`).join("")}</div>`;
+  } else if(a.status==="skipped"){
+    body=`<div class="row"><p class="grow muted">Skipped</p><button class="btn sm ghost" data-a="act-undo" data-d="${k}">Undo</button></div>`;
+  } else if(k<=today()){
+    body=`<div class="row wrap-r"><div class="wbox small-box"><input id="am-${k}" class="num" type="number" inputmode="numeric" min="1" step="5" value="${a.minutes||A.min}" aria-label="Minutes"><span>min</span></div>
+      <button class="btn primary grow" data-a="act-done" data-d="${k}" data-k="${a.kind}">Mark ${A.name.toLowerCase()} done</button></div>
+    <div class="row wrap-r"><button class="btn sm" data-a="act-set" data-d="${k}" data-k="${o}">Switch to ${ACT[o].name}</button><button class="btn sm ghost" data-a="act-skip" data-d="${k}" data-k="${a.kind}">Skip</button></div>`;
+  } else {
+    body=`<div class="row wrap-r"><span class="muted small grow">${a.status==="suggested"?"From your weekly routine":"Planned"}</span><button class="btn sm" data-a="act-set" data-d="${k}" data-k="${o}">Switch to ${ACT[o].name}</button>${a.status==="planned"?`<button class="btn sm ghost" data-a="act-remove" data-d="${k}">Remove</button>`:""}</div>`;
+  }
+  return `<div class="card act-card ${a.kind}"><div class="row"><div class="grow"><div class="eyebrow">${inPanel?"Activity":k===today()?"Today":fmtDay(k)}</div><h3>${A.name}</h3></div><span class="tag num">${A.min} min usual</span></div>${body}</div>`;
+}
 
 /* ---------- views ---------- */
 function setupView(){
@@ -405,23 +477,26 @@ function doneView(s){
   <button class="btn ghost block" data-a="undo" data-d="${s.date}">Reopen this workout</button>`;
 }
 
-function nextCard(compact){
+function nextCard(compact,ng){
   const st=S.settings, t=today();
-  const type=plannedType(t)||st.next;
+  const type=plannedType(t)||(ng&&plannedType(ng))||st.next;
+  const when=ng&&ng!==t?` · ${fmtDay(ng)}`:"";
   const lines=buildExercises(type).map(e=>{const L=LIB[e.key];return `<div class="lift-line"><span class="n">${L.name}</span><span class="w num">${L.bw&&!e.weight?'<span class="small muted">BW</span>':fmtW(e.weight)+'<span class="muted small"> kg</span>'}</span><span class="s num">${e.sets.length}×${e.reps}${L.unit||""}</span></div>`}).join("");
   const fails=PROGRAM[type].filter(k=>st.lifts[k].fails>0).map(k=>`${LIB[k].name}: ${st.lifts[k].fails} failed session${st.lifts[k].fails>1?"s":""} in a row`);
-  return `<div class="card"><div class="row"><div class="grow"><div class="eyebrow">${compact?"Next session":"Up next"}</div><h3>Workout ${type}</h3></div>
+  return `<div class="card"><div class="row"><div class="grow"><div class="eyebrow">${compact?"Next session":"Next gym session"}${when}</div><h3>Workout ${type}</h3></div>
     <button class="btn sm" data-a="switch-next" data-t="${type}">Do ${other(type)} instead</button></div>
   <div>${lines}</div>
   ${fails.length?`<p class="small muted">${fails.join(" · ")}. Three in a row drops the weight by 10%.</p>`:""}
-  ${compact?"":`<button class="btn primary block" data-a="start" data-d="${t}" data-t="${type}">Start workout ${type}</button>`}</div>`;
+  ${compact?"":`<button class="btn ${ng&&ng!==t?"":"primary"} block" data-a="start" data-d="${t}" data-t="${type}">Start workout ${type}${ng&&ng!==t?" today":""}</button>`}</div>`;
 }
 
 function upcoming(){
   const t=today();
-  const list=Object.values(S.sessions).filter(s=>s.status==="planned"&&s.date>t).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,4);
-  if(!list.length) return `<div class="card"><div class="row"><div class="grow"><div class="eyebrow">Planned</div><p class="muted small">Nothing planned yet.</p></div><button class="btn sm" data-a="autoplan">Plan Mon/Wed/Fri</button></div></div>`;
-  return `<div class="card"><div class="eyebrow">Planned</div><div>${list.map(s=>`<div class="lift-line"><span class="n">${fmtDay(s.date)}</span><span class="badge">Workout ${s.type}</span></div>`).join("")}</div></div>`;
+  const items=[...Object.values(S.sessions).filter(s=>s.status==="planned"&&s.date>t).map(s=>({d:s.date,html:`<span class="badge">Workout ${s.type}</span>`})),
+    ...Object.values(S.acts).filter(a=>a.status==="planned"&&a.date>t).map(a=>({d:a.date,html:`<span class="badge" style="background:var(--${a.kind}-soft);color:var(--${a.kind})">${ACT[a.kind].name}</span>`}))]
+    .sort((a,b)=>a.d.localeCompare(b.d)).slice(0,5);
+  if(!items.length) return `<div class="card"><div class="row"><div class="grow"><div class="eyebrow">Planned</div><p class="muted small">Nothing planned yet. Fill the next 4 weeks from your routine.</p></div><button class="btn sm" data-a="autoplan">Plan 4 weeks</button></div></div>`;
+  return `<div class="card"><div class="eyebrow">Coming up</div><div>${items.map(i=>`<div class="lift-line"><span class="n">${fmtDay(i.d)}</span>${i.html}</div>`).join("")}</div></div>`;
 }
 
 function backupNudge(){
@@ -436,8 +511,11 @@ function todayView(){
   const ts=S.sessions[today()];
   if(ts&&ts.status==="done") return doneView(ts);
   const recent=Object.values(S.sessions).filter(s=>s.status==="done").sort((a,b)=>b.date.localeCompare(a.date))[0];
-  return `<div><div class="eyebrow">${fmtDay(today())}</div><h2>${recent?"Ready when you are":"First session"}</h2></div>
-  ${backupNudge()}${nextCard(false)}${upcoming()}
+  const ng=nextGymDay(), t=today();
+  const gymToday=ng===t;
+  const title=gymToday?"Gym day":(actFor(t)?`${ACT[actFor(t).kind].name} day`:"Rest day");
+  return `<div><div class="eyebrow">${fmtDay(t)}</div><h2>${title}</h2></div>
+  ${backupNudge()}${weekStrip()}${actCard(t)}${nextCard(false,ng)}${upcoming()}
   ${recent?`<p class="muted small">Last workout: ${recent.type} on ${fmtDay(recent.date)}.</p>`:""}`;
 }
 
@@ -448,9 +526,8 @@ function calendarView(){
   const days=[]; for(let i=0;i<42;i++){const d=new Date(start);d.setDate(start.getDate()+i);days.push(d)}
   const shown=days[35].getMonth()!==m.getMonth()?days.slice(0,35):days;
   const cells=shown.map(d=>{
-    const k=ymd(d), s=S.sessions[k]; let mk="";
-    if(s){const cls=s.status==="planned"&&k<t?"missed":s.status; mk=`<span class="mark ${cls}">${s.type}</span>`}
-    return `<button class="day ${d.getMonth()!==m.getMonth()?"out":""} ${k===t?"today":""}" data-a="cal-day" data-d="${k}" aria-pressed="${k===S.calSel}" aria-label="${fmtDay(k)}${s?", workout "+s.type+" "+s.status:""}"><span class="dn">${d.getDate()}</span>${mk}</button>`}).join("");
+    const k=ymd(d), s=S.sessions[k], a=S.acts[k]; const mk=`<span class="marks">${gymMark(k)}${actMark(k)}</span>`;
+    return `<button class="day ${d.getMonth()!==m.getMonth()?"out":""} ${k===t?"today":""}" data-a="cal-day" data-d="${k}" aria-pressed="${k===S.calSel}" aria-label="${fmtDay(k)}${s?", workout "+s.type+" "+s.status:""}${a?", "+ACT[a.kind].name+" "+a.status:""}"><span class="dn">${d.getDate()}</span>${mk}</button>`}).join("");
   const title=m.toLocaleDateString("en-GB",{month:"long",year:"numeric"});
   return `<div><div class="eyebrow">Plan ahead</div><h2>Calendar</h2></div>
   <div class="card">
@@ -458,10 +535,10 @@ function calendarView(){
       <button class="icon-btn" data-a="cal-move" data-d="-1" aria-label="Previous month"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
       <button class="icon-btn" data-a="cal-move" data-d="1" aria-label="Next month"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button></div>
     <div class="cal">${["Mo","Tu","We","Th","Fr","Sa","Su"].map(x=>`<div class="dow">${x}</div>`).join("")}${cells}</div>
-    <div class="legend"><span><i class="mark done">A</i>Done</span><span><i class="mark planned">B</i>Planned</span><span><i class="mark missed">A</i>Missed</span><span><i class="mark active">A</i>In progress</span></div>
+    <div class="legend"><span><i class="mark done">A</i>Done</span><span><i class="mark planned">B</i>Planned</span><span><i class="mark missed">A</i>Missed</span><span><i class="mark active">A</i>In progress</span><span><i class="mark dance done">D</i>Dancing</span><span><i class="mark hiit done">H</i>HIIT</span><span><i class="mark planned suggested">G</i>Routine</span></div>
   </div>
   ${dayPanel(S.calSel)}
-  <div class="card"><div class="row"><p class="grow small muted">Fill the next 4 weeks with Monday, Wednesday and Friday, alternating A and B. Days that already have something stay as they are.</p><button class="btn sm" data-a="autoplan">Plan 4 weeks</button></div></div>`;
+  <div class="card"><div class="row"><p class="grow small muted">Fill the next 4 weeks from your weekly routine, alternating gym workouts A and B. Days that already have something stay as they are. Change the routine in Settings.</p><button class="btn sm" data-a="autoplan">Plan 4 weeks</button></div></div>`;
 }
 
 function dayPanel(k){
@@ -480,7 +557,9 @@ function dayPanel(k){
     body=`<p><span class="badge ${s.status==="done"?"good":""}">Workout ${s.type} · ${s.status==="done"?"done":"in progress"}</span></p><div>${lines}</div>
     ${s.status==="active"?`<button class="btn sm primary" data-a="tab" data-tab="today">Continue</button>`:""}`;
   }
-  return `<div class="card"><div class="eyebrow">${fmtDay(k)}</div>${body}</div>`;
+  const a=actFor(k);
+  const actBlock=a?actCard(k,true):`<div class="card"><div class="eyebrow">Activity</div><div class="row wrap-r">${Object.entries(ACT).map(([kk,A])=>`<button class="btn sm" data-a="${k<=t?"act-log":"act-set"}" data-d="${k}" data-k="${kk}">${k<=t?"Log":"Plan"} ${A.name.toLowerCase()}</button>`).join("")}</div></div>`;
+  return `<div class="card"><div class="eyebrow">${fmtDay(k)} · Gym</div>${body}</div>${actBlock}`;
 }
 
 function chart(points){
@@ -519,6 +598,7 @@ function progressView(){
   const e1=pts.length?Math.max(...pts.map(p=>p.e1rm)):0;
   const thisMonth=done.filter(s=>s.date.startsWith(today().slice(0,7))).length;
   return `<div><div class="eyebrow">${done.length} workout${done.length===1?"":"s"} logged · ${thisMonth} this month</div><h2>Progress</h2></div>
+  ${activitySummary(done)}
   <div class="row wrap-r">${chips}</div>
   <div class="card">
     <div class="stats"><div class="stat"><small>Next</small><b>${fmtW(cur)}</b></div><div class="stat"><small>Heaviest</small><b>${pts.length?fmtW(best):"–"}</b></div><div class="stat"><small>Est. 1RM</small><b>${pts.length&&!L.unit?fmtW(Math.round(e1*2)/2):"–"}</b></div></div>
@@ -527,6 +607,17 @@ function progressView(){
   ${pts.length?`<div class="card"><div class="eyebrow">History</div><div>${pts.slice().reverse().slice(0,12).map(p=>`<div class="hist-row"><span class="muted small">${fmtShort(p.d)}</span><span><b>${fmtW(p.w)} kg</b></span><span class="small ${p.ok?"":"muted"}">${p.reps.map(r=>r===null?"–":r).join("/")}</span></div>`).join("")}</div></div>`:""}`;
 }
 
+function activitySummary(done){
+  const m=today().slice(0,7);
+  const gym=done.filter(s=>s.date.startsWith(m)).length;
+  const acts=Object.values(S.acts).filter(a=>a.status==="done"&&a.date.startsWith(m));
+  const cnt=k=>acts.filter(a=>a.kind===k); const mins=k=>cnt(k).reduce((x,a)=>x+(a.minutes||0),0);
+  const h=n=>n>=60?`${Math.round(n/6)/10} h`:`${n} min`;
+  return `<div class="card"><div class="eyebrow">This month</div><div class="stats">
+    <div class="stat"><small>Gym</small><b>${gym}</b></div>
+    <div class="stat"><small>HIIT</small><b>${cnt("hiit").length}</b><span class="small muted">${h(mins("hiit"))}</span></div>
+    <div class="stat"><small>Dancing</small><b>${cnt("dance").length}</b><span class="small muted">${h(mins("dance"))}</span></div></div></div>`;
+}
 function libraryView(){
   const cats={}; Object.entries(LIB).forEach(([k,e])=>{(cats[e.cat]=cats[e.cat]||[]).push([k,e])});
   const inA=new Set(S.settings.extras.A.map(x=>x.key)), inB=new Set(S.settings.extras.B.map(x=>x.key));
@@ -560,6 +651,8 @@ function settingsSheet(){
   ${MAIN.map(k=>`<div class="field"><label for="st-${k}">${LIB[k].name}${st.lifts[k].fails?`<br><span class="small muted">${st.lifts[k].fails} failed in a row</span>`:""}</label><div class="wbox"><input id="st-${k}" class="num" type="number" inputmode="decimal" step="2.5" min="0" value="${fmtW(st.lifts[k].weight)}"><span>kg</span></div></div>`).join("")}
   <div class="field"><label for="st-bar">Bar weight</label><div class="wbox"><input id="st-bar" class="num" type="number" inputmode="decimal" step="0.5" min="0" value="${fmtW(st.bar)}"><span>kg</span></div></div>
   <button class="btn primary block" data-a="save-weights">Save weights</button></div>
+  <div class="card"><div class="eyebrow">Weekly routine</div><p class="small muted">Used for “Plan 4 weeks”, the week overview and what Today suggests.</p>
+  ${[1,2,3,4,5,6,0].map(d=>`<div class="field"><label for="wk-${d}">${DAYNAMES[d]}</label><select class="sel" id="wk-${d}" data-wk="${d}">${[["","Rest"],["gym","Gym"],["dance","Dancing"],["hiit","HIIT"]].map(([v,l])=>`<option value="${v}" ${(st.week[String(d)]||"")===v?"selected":""}>${l}</option>`).join("")}</select></div>`).join("")}</div>
   <div class="eyebrow">Extra exercises per workout</div>
   ${extrasEditor("A")}${extrasEditor("B")}
   <div class="card"><div class="eyebrow">Rest timer</div><p class="small muted">Starts when you tap a set. StrongLifts suggests 1.5 min after an easy set, 3 min after a hard one and 5 min after a failed one.</p>
@@ -631,7 +724,7 @@ function restFor(ex,missed){
 /* ---------- backup ---------- */
 function exportData(){
   S.settings.lastBackup=Date.now(); save();
-  const data=JSON.stringify({app:"barbell-log",version:1,exported:new Date().toISOString().slice(0,10)+"T00:00:00",settings:S.settings,sessions:S.sessions},null,1);
+  const data=JSON.stringify({app:"barbell-log",version:1,exported:new Date().toISOString().slice(0,10)+"T00:00:00",settings:S.settings,sessions:S.sessions,acts:S.acts},null,1);
   const blob=new Blob([data],{type:"application/json"}); const url=URL.createObjectURL(blob);
   const a=document.createElement("a"); a.href=url; a.download=`barbell-log-backup-${today()}.json`; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),4000); toast("Backup saved"); render();
@@ -640,7 +733,7 @@ document.getElementById("import-file").addEventListener("change",e=>{
   const f=e.target.files&&e.target.files[0]; e.target.value=""; if(!f) return;
   const rd=new FileReader(); rd.onload=()=>{
     try{const o=JSON.parse(rd.result); if(o.app!=="barbell-log"||!o.settings||!o.sessions) throw 0;
-      if(!S.settings||!S.settings.started){S.settings=fill(o.settings);S.sessions=o.sessions;save();toast("Backup restored");render();return}
+      if(!S.settings||!S.settings.started){S.settings=fill(o.settings);S.sessions=o.sessions;S.acts=o.acts||{};save();toast("Backup restored");render();return}
       S.importData=o; S.sheet="settings"; render();
     }catch(err){toast("That file isn't a 5×5 Log backup")}
   }; rd.readAsText(f);
@@ -706,21 +799,32 @@ document.addEventListener("click",e=>{
     case "sound": st.sound=b.dataset.v==="1"; save(); renderSheet(); if(st.sound) beep(); break;
     case "export": exportData(); break;
     case "import": document.getElementById("import-file").click(); break;
-    case "import-confirm":{const o=S.importData; S.settings=fill(o.settings); S.sessions=o.sessions; S.importData=null; save(); toast("Backup restored"); S.sheet=null; render(); break;}
+    case "import-confirm":{const o=S.importData; S.settings=fill(o.settings); S.sessions=o.sessions; S.acts=o.acts||{}; S.importData=null; save(); toast("Backup restored"); S.sheet=null; render(); break;}
     case "import-cancel": S.importData=null; render(); break;
     case "cal-move": S.calMonth=new Date(S.calMonth.getFullYear(),S.calMonth.getMonth()+parseInt(b.dataset.d,10),1); render(); break;
     case "cal-day": S.calSel=b.dataset.d; render(); break;
     case "plan":{const k=b.dataset.d; S.sessions[k]={date:k,type:b.dataset.t,status:"planned"}; save(); render(); break;}
     case "unplan": delete S.sessions[b.dataset.d]; save(); render(); break;
     case "autoplan":{
-      let type=st.next; const d=new Date(); if(S.sessions[today()]) d.setDate(d.getDate()+1); let n=0;
+      let type=st.next, n=0; const d=new Date();
       for(let i=0;i<28;i++){
-        const dd=new Date(d); dd.setDate(d.getDate()+i); const k=ymd(dd), wd=dd.getDay();
-        if(S.sessions[k]){ if(S.sessions[k].status!=="done") type=other(S.sessions[k].type); continue }
-        if(wd===1||wd===3||wd===5){S.sessions[k]={date:k,type,status:"planned"}; type=other(type); n++}
+        const dd=new Date(d); dd.setDate(d.getDate()+i); const k=ymd(dd), p=st.week[String(dd.getDay())];
+        if(p==="gym"){
+          if(S.sessions[k]){ if(S.sessions[k].status!=="done") type=other(S.sessions[k].type); continue }
+          S.sessions[k]={date:k,type,status:"planned"}; type=other(type); n++;
+        } else if((p==="dance"||p==="hiit")&&!S.acts[k]){S.acts[k]={date:k,kind:p,status:"planned"}; n++}
       }
-      save(); toast(n?`Planned ${n} workouts`:"Those days are already planned"); render(); break;}
+      save(); toast(n?`Planned ${n} sessions`:"Those days are already planned"); render(); break;}
     case "prog": S.progLift=b.dataset.k; render(); break;
+    case "goto-day": S.calSel=b.dataset.d; {const x=parse(b.dataset.d); S.calMonth=new Date(x.getFullYear(),x.getMonth(),1)} S.tab="calendar"; render(); window.scrollTo(0,0); break;
+    case "act-done":{const k=b.dataset.d; const inp=document.getElementById("am-"+k); const m=parseInt(inp&&inp.value,10);
+      S.acts[k]=Object.assign(S.acts[k]||{date:k},{kind:b.dataset.k,status:"done",minutes:m>0?m:ACT[b.dataset.k].min}); save(); toast(`${ACT[b.dataset.k].name} logged`); render(); break;}
+    case "act-log":{const k=b.dataset.d; S.acts[k]={date:k,kind:b.dataset.k,status:"planned"}; save(); render(); break;}
+    case "act-set":{const k=b.dataset.d; const cur=S.acts[k]; S.acts[k]=Object.assign(cur||{date:k,status:"planned"},{kind:b.dataset.k}); if(S.acts[k].status==="suggested") S.acts[k].status="planned"; save(); render(); break;}
+    case "act-skip":{const k=b.dataset.d; S.acts[k]={date:k,kind:b.dataset.k,status:"skipped"}; save(); render(); break;}
+    case "act-undo":{const a=S.acts[b.dataset.d]; if(a){a.status="planned"; delete a.effort} save(); render(); break;}
+    case "act-remove": delete S.acts[b.dataset.d]; save(); render(); break;
+    case "act-effort":{const a=S.acts[b.dataset.d]; if(a){a.effort=a.effort===b.dataset.v?undefined:b.dataset.v; save(); render()} break;}
     case "timer-add": if(S.timer){S.timer.end=Math.max(Date.now(),S.timer.end)+30000; S.timer.alerted=false; drawTimer()} break;
     case "timer-stop": stopTimer(); break;
   }
@@ -728,6 +832,7 @@ document.addEventListener("click",e=>{
 document.addEventListener("change",e=>{
   const t=e.target, d=t.dataset||{};
   if(d.w!==undefined){const s=activeSession(); if(!s) return; const v=parseFloat(t.value); if(!isNaN(v)&&v>=0){s.exercises[+d.w].weight=v; save()} setTimeout(render,0); return}
+  if(d.wk!==undefined){const v=t.value; if(v) S.settings.week[d.wk]=v; else delete S.settings.week[d.wk]; save(); toast("Routine saved"); return}
   if(d.xt){const x=S.settings.extras[d.xt][+d.xi]; const v=parseInt(t.value,10); if(x&&!isNaN(v)&&v>0){x[d.f]=Math.min(v,d.f==="sets"?10:300); save()} return}
 });
 document.addEventListener("input",e=>{
